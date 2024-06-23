@@ -12,6 +12,8 @@ metal_main :: proc() -> (err: ^NS.Error) {
 
 	window, cleanup := createMetalWindow()
 	defer cleanup(window)
+	w, h: i32
+	SDL.Metal_GetDrawableSize(window, &w, &h)
 
 	// Get Metal layer from SDL window
 	window_system_info: SDL.SysWMinfo
@@ -32,27 +34,45 @@ metal_main :: proc() -> (err: ^NS.Error) {
 	metal_layer := CA.MetalLayer.layer()
 	defer metal_layer->release()
 	metal_layer->setDevice(device)
-	metal_layer->setPixelFormat(.BGRA8Unorm_sRGB) // why this format?
+	metal_layer->setPixelFormat(.BGRA8Unorm_sRGB) // default format
+	metal_layer->setDrawableSize(NS.Size{NS.Float(w), NS.Float(h)})
+	fmt.println(w, h)
 	native_window->contentView()->setLayer(metal_layer)
 
 	//create triangle
-	createTriangle(device)
+	triangle_vertex_buffer := createTriangle(device)
 
 	// Create Metal render pipeline
 	metal_library := createLibraryFromSource(device) or_return
 	command_queue := createCommandQueue(device)
-	render_PSO := createRenderPipeline(device, metal_library, metal_layer) or_return
+	render_PSO := createRenderPipeline(device, metal_library) or_return
 
 
 	SDL.ShowWindow(window)
 	// While window open loop through events. Close on quit event.
-	for quit := false; !quit; {
-		for e: SDL.Event; SDL.PollEvent(&e); {
-			#partial switch e.type {
-			case .QUIT:
-				quit = true
-			}
-		}
+	for !quit_window {
+		// Poll for SDL window events
+		pollEvents()
+
+		// Render
+		drawable := metal_layer->nextDrawable()
+		defer drawable->release()
+		pass := MTL.RenderPassDescriptor_alloc()->init()
+		// Configure Render Pass
+		defer pass->release()
+		configureRenderPass(pass, drawable)
+
+		// Encode Render Command
+		command_buffer := command_queue->commandBuffer()
+		defer command_buffer->release()
+		command_encoder := command_buffer->renderCommandEncoderWithDescriptor(pass)
+		defer command_encoder->release()
+		encodeRenderCommand(command_encoder, render_PSO, triangle_vertex_buffer)
+		command_encoder->endEncoding()
+
+		command_buffer->presentDrawable(drawable)
+		command_buffer->commit()
+		command_buffer->waitUntilCompleted()
 	}
 
 	return nil

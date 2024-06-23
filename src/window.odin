@@ -11,8 +11,8 @@ createMetalWindow :: proc() -> (^SDL.Window, proc(window: ^SDL.Window)) {
 		"My Metal Window",
 		SDL.WINDOWPOS_CENTERED,
 		SDL.WINDOWPOS_CENTERED,
-		854,
-		480,
+		800,
+		600,
 		{.ALLOW_HIGHDPI, .HIDDEN, .RESIZABLE},
 	)
 
@@ -22,4 +22,16 @@ createMetalWindow :: proc() -> (^SDL.Window, proc(window: ^SDL.Window)) {
 cleanupMetalWindow :: proc(window: ^SDL.Window) {
 	SDL.DestroyWindow(window)
 	SDL.Quit()
+}
+
+
+quit_window := false
+// Poll for events
+pollEvents :: proc() {
+	for e: SDL.Event; SDL.PollEvent(&e); {
+		#partial switch e.type {
+		case .QUIT:
+			quit_window = true
+		}
+	}
 }

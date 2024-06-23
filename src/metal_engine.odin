@@ -6,25 +6,26 @@ import MTL "vendor:darwin/Metal"
 import CA "vendor:darwin/QuartzCore"
 
 
-createTriangle :: proc(device: ^MTL.Device) {
+createTriangle :: proc(device: ^MTL.Device) -> ^MTL.Buffer {
 	NUM_VERTICES :: 3
 	// triangle has 3 points in 3 dimensions
 	triangleVertices := [NUM_VERTICES][3]f32 {
 		// vertices
 		{-0.5, -0.5, 0.0},
-		{0.5, -0.5, 0.0},
 		{0.0, 0.5, 0.0},
+		{0.5, -0.5, 0.0},
 	}
 
-	device->newBufferWithSlice(triangleVertices[:], {}) //empty options uses default of shared
+	return device->newBufferWithSlice(triangleVertices[:], {}) //empty options uses default of shared
 }
 
+// NOT USED
+// XCode creates default library but we're not using XCode
+// This could be useful if we figureout how to compile shaders to a .metallib
 createDefaultLibrary :: proc(device: ^MTL.Device) -> ^MTL.Library {
-	// XCode creates default library but we're not using XCode
-	// metalDefaultLibrary := device->newDefaultLibrary()
-	// assert(metalDefaultLibrary != nil, "Failed to create default library")
-	// return metalDefaultLibrary
-	return nil
+	metalDefaultLibrary := device->newDefaultLibrary()
+	assert(metalDefaultLibrary != nil, "Failed to create default library")
+	return metalDefaultLibrary
 }
 
 shader_source: string = #load("shaders/triangle.metal")
@@ -47,7 +48,6 @@ createCommandQueue :: proc(device: ^MTL.Device) -> ^MTL.CommandQueue {
 createRenderPipeline :: proc(
 	device: ^MTL.Device,
 	library: ^MTL.Library,
-	metalLayer: ^CA.MetalLayer,
 ) -> (
 	render_pso: ^MTL.RenderPipelineState,
 	err: ^NS.Error,
@@ -71,4 +71,28 @@ createRenderPipeline :: proc(
 	// finally with have a our Render Pipeline State Object that specifies our render pipeline
 	render_pso = device->newRenderPipelineStateWithDescriptor(descriptor) or_return
 	return
+}
+
+configureColorAttachment :: proc(color_desc: ^MTL.RenderPassColorAttachmentDescriptor) {
+	color_desc->setLoadAction(.Clear) // remove the previous contents of the texture
+	color_desc->setStoreAction(.Store) // store the result of the render pass in the texture
+	color_desc->setClearColor(MTL.ClearColor{19.0 / 255.0, 20.0 / 255.0, 24.0 / 255.0, 1.0})
+}
+
+configureRenderPass :: proc(pass: ^MTL.RenderPassDescriptor, drawable: ^CA.MetalDrawable) {
+	// Configure color attachment
+	color_desc := pass->colorAttachments()->object(0)
+	assert(color_desc != nil, "Failed to create color attachment")
+	color_desc->setTexture(drawable->texture()) // clear the texture
+	configureColorAttachment(color_desc)
+}
+
+encodeRenderCommand :: proc(
+	encoder: ^MTL.RenderCommandEncoder,
+	pso: ^MTL.RenderPipelineState,
+	vertex_buffer: ^MTL.Buffer,
+) {
+	encoder->setRenderPipelineState(pso)
+	encoder->setVertexBuffer(vertex_buffer, 0, 0)
+	encoder->drawPrimitives(.Triangle, 0, 3) // vertex start: 0, vertex count: 3
 }
