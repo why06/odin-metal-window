@@ -28,16 +28,31 @@ createDefaultLibrary :: proc(device: ^MTL.Device) -> ^MTL.Library {
 	return metalDefaultLibrary
 }
 
-shader_source: string = #load("shaders/triangle.metal")
+createTriangleLibrary :: proc(device: ^MTL.Device) -> (lib: ^MTL.Library, err: ^NS.Error) {
+	lib_url := NS.URL_alloc()->initFileURLWithPath(
+		NS_String("src/shaders/built/triangle.metallib"),
+	)
+	defer lib_url->release()
+	lib = createLibraryFromFile(device, lib_url) or_return
+	return
+}
 
-createLibraryFromSource :: proc(
-	devive: ^MTL.Device,
+createLibraryFromFile :: proc(
+	device: ^MTL.Device,
+	url: ^NS.URL,
 ) -> (
-	metal_library: ^MTL.Library,
+	lib: ^MTL.Library,
 	err: ^NS.Error,
 ) {
-	metal_library = devive->newLibraryWithSource(NS_String(shader_source), nil) or_return
-	assert(metal_library != nil, "Failed to create library from traingle.metal")
+	lib = device->newLibraryWithURL(url) or_return
+	assert(lib != nil, "Failed to create library from file")
+	return
+}
+
+shader_source: string = #load("shaders/triangle.metal")
+createLibraryFromSource :: proc(devive: ^MTL.Device) -> (lib: ^MTL.Library, err: ^NS.Error) {
+	lib = devive->newLibraryWithSource(NS_String(shader_source), nil) or_return
+	assert(lib != nil, "Failed to create library from traingle.metal")
 	return
 }
 

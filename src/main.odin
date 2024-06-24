@@ -27,7 +27,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
 	// The name of the device is the name of the GPU: 'Apple M1 Max' in our case
 	device := MTL.CreateSystemDefaultDevice()
 	defer device->release()
-	fmt.println("Device: ", device->name()->odinString())
+	// fmt.println("Device: ", device->name()->odinString())
 
 	// Create a Metal layer and assign to the window. 
 	// When the window is displayed, the Metal layer will be used to render the content in the view.
@@ -36,14 +36,14 @@ metal_main :: proc() -> (err: ^NS.Error) {
 	metal_layer->setDevice(device)
 	metal_layer->setPixelFormat(.BGRA8Unorm_sRGB) // default format
 	metal_layer->setDrawableSize(NS.Size{NS.Float(w), NS.Float(h)})
-	fmt.println(w, h)
+	// fmt.println(w, h)
 	native_window->contentView()->setLayer(metal_layer)
 
 	//create triangle
 	triangle_vertex_buffer := createTriangle(device)
 
 	// Create Metal render pipeline
-	metal_library := createLibraryFromSource(device) or_return
+	metal_library := createTriangleLibrary(device) or_return
 	command_queue := createCommandQueue(device)
 	render_PSO := createRenderPipeline(device, metal_library) or_return
 
