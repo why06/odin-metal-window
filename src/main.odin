@@ -39,11 +39,18 @@ metal_main :: proc() -> (err: ^NS.Error) {
 	// fmt.println(w, h)
 	native_window->contentView()->setLayer(metal_layer)
 
-	//create triangle
+	// create triangle
 	triangle_vertex_buffer := createTriangle(device)
+	// create square
+	square_vertex_buffer := createSquare(device)
+
+	grass_texture := createTexture(device)
+
+	defer grass_texture->release()
 
 	// Create Metal render pipeline
-	metal_library := createTriangleLibrary(device) or_return
+	// metal_library := createTriangleLibrary(device) or_return
+	metal_library := createLibraryFromFile(device, "src/shaders/built/square.metallib") or_return
 	command_queue := createCommandQueue(device)
 	render_PSO := createRenderPipeline(device, metal_library) or_return
 
@@ -52,7 +59,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
 	// While window open loop through events. Close on quit event.
 	for !quit_window {
 		// Poll for SDL window events
-		pollEvents()
+		pollEvents(window)
 
 		// Render
 		drawable := metal_layer->nextDrawable()
@@ -67,7 +74,8 @@ metal_main :: proc() -> (err: ^NS.Error) {
 		defer command_buffer->release()
 		command_encoder := command_buffer->renderCommandEncoderWithDescriptor(pass)
 		defer command_encoder->release()
-		encodeRenderCommand(command_encoder, render_PSO, triangle_vertex_buffer)
+		// encodeRenderCommand(command_encoder, render_PSO, triangle_vertex_buffer)
+		encodeRenderCommand(command_encoder, render_PSO, square_vertex_buffer, grass_texture)
 		command_encoder->endEncoding()
 
 		command_buffer->presentDrawable(drawable)

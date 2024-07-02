@@ -27,9 +27,21 @@ cleanupMetalWindow :: proc(window: ^SDL.Window) {
 
 quit_window := false
 // Poll for events
-pollEvents :: proc() {
+pollEvents :: proc(window: ^SDL.Window) {
+	w, h: i32
 	for e: SDL.Event; SDL.PollEvent(&e); {
 		#partial switch e.type {
+		case .WINDOWEVENT:
+			{
+				#partial switch e.window.event {
+				case .RESIZED:
+					fmt.println("Event: ", e.window.event)
+					fmt.println("Window resized: ", e.window.data1, "x", e.window.data2)
+					SDL.Metal_GetDrawableSize(window, &w, &h)
+					fmt.println("Drawable resized: ", w, "x", h)
+
+				}
+			}
 		case .QUIT:
 			quit_window = true
 		}

@@ -1,10 +1,22 @@
 package main
 
+import "core:bytes"
 import "core:fmt"
+import "core:image"
+import PNG "core:image/png"
+import "core:os"
+
 import NS "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
 import CA "vendor:darwin/QuartzCore"
 
+import glm "core:math/linalg/glsl"
+
+
+Vertex_Data :: struct {
+	position: [4]f32,
+	texcoord: [2]f32,
+}
 
 createTriangle :: proc(device: ^MTL.Device) -> ^MTL.Buffer {
 	NUM_VERTICES :: 3
@@ -19,6 +31,22 @@ createTriangle :: proc(device: ^MTL.Device) -> ^MTL.Buffer {
 	return device->newBufferWithSlice(triangleVertices[:], {}) //empty options uses default of shared
 }
 
+createSquare :: proc(device: ^MTL.Device) -> ^MTL.Buffer {
+	NUM_VERTICES :: 6
+	// square has 6 points in 3 dimensions
+	squareVertices := []Vertex_Data {
+		// vertices & texcoords
+		{{-0.5, -0.5, 0.5, 1.0}, {0.0, 0.0}},
+		{{-0.5, 0.5, 0.5, 1.0}, {0.0, 1.0}},
+		{{0.5, 0.5, 0.5, 1.0}, {1.0, 1.0}},
+		{{-0.5, -0.5, 0.5, 1.0}, {0.0, 0.0}},
+		{{0.5, 0.5, 0.5, 1.0}, {1.0, 1.0}},
+		{{0.5, -0.5, 0.5, 1.0}, {1.0, 0.0}},
+	}
+
+	return device->newBufferWithSlice(squareVertices[:], {}) //empty options uses default of shared
+}
+
 // NOT USED
 // XCode creates default library but we're not using XCode
 // This could be useful if we figureout how to compile shaders to a .metallib
@@ -29,22 +57,20 @@ createDefaultLibrary :: proc(device: ^MTL.Device) -> ^MTL.Library {
 }
 
 createTriangleLibrary :: proc(device: ^MTL.Device) -> (lib: ^MTL.Library, err: ^NS.Error) {
-	lib_url := NS.URL_alloc()->initFileURLWithPath(
-		NS_String("src/shaders/built/triangle.metallib"),
-	)
-	defer lib_url->release()
-	lib = createLibraryFromFile(device, lib_url) or_return
+	lib = createLibraryFromFile(device, "src/shaders/built/triangle.metallib") or_return
 	return
 }
 
 createLibraryFromFile :: proc(
 	device: ^MTL.Device,
-	url: ^NS.URL,
+	url: string,
 ) -> (
 	lib: ^MTL.Library,
 	err: ^NS.Error,
 ) {
-	lib = device->newLibraryWithURL(url) or_return
+	_url := NS.URL_alloc()->initFileURLWithPath(NS_String(url))
+	defer _url->release()
+	lib = device->newLibraryWithURL(_url) or_return
 	assert(lib != nil, "Failed to create library from file")
 	return
 }
@@ -106,8 +132,67 @@ encodeRenderCommand :: proc(
 	encoder: ^MTL.RenderCommandEncoder,
 	pso: ^MTL.RenderPipelineState,
 	vertex_buffer: ^MTL.Buffer,
+	texture: ^MTL.Texture,
 ) {
+	vertexStart := 0
+	vertexCount := 6
 	encoder->setRenderPipelineState(pso)
 	encoder->setVertexBuffer(vertex_buffer, 0, 0)
-	encoder->drawPrimitives(.Triangle, 0, 3) // vertex start: 0, vertex count: 3
+	encoder->setFragmentTexture(texture, 0) // no texture
+	encoder->drawPrimitives(.Triangle, NS.UInteger(vertexStart), NS.UInteger(vertexCount))
+}
+
+Texture :: struct {
+	texture:                 ^MTL.Texture,
+	width, height, channels: int,
+}
+
+createTexture :: proc(device: ^MTL.Device) -> (texture: ^MTL.Texture) {
+
+	// Load texture from file using PNG
+
+	img: ^PNG.Image
+	err: PNG.Error
+	img, err = PNG.load_from_file("assets/mc_grass.png", {.alpha_add_if_missing})
+	if (err != nil) {fmt.printfln("Failed to load png image", err)}
+	assert(img != nil, "Failed to load png image")
+	defer PNG.destroy(img)
+
+	// switch pixel colors
+	pixels := (bytes.buffer_to_bytes(&img.pixels))
+	pixel_buf := make([][4]u8, img.width * img.height)
+	for i in 0 ..< (img.width * img.height) {
+		// RGBA -> BGRA
+		pixel_buf[i] = [4]u8 {
+			pixels[i * 4 + 2],
+			pixels[i * 4 + 1],
+			pixels[i * 4 + 0],
+			pixels[i * 4 + 3],
+		}
+	}
+
+	// flip vertically
+	flipped_pixels := make([][4]u8, img.width * img.height)
+	for y in 0 ..< img.height {
+		for x in 0 ..< img.width {
+			flipped_pixels[y * img.width + x] = pixel_buf[(img.height - y - 1) * img.width + x]
+		}
+	}
+
+	final_pixels := raw_data(flipped_pixels)
+
+	texture_descriptor: ^MTL.TextureDescriptor = MTL.TextureDescriptor_alloc()->init() // Create a texture descriptor
+	defer texture_descriptor->release()
+	texture_descriptor->setPixelFormat(.BGRA8Unorm_sRGB)
+	texture_descriptor->setWidth(NS.UInteger(img.width))
+	texture_descriptor->setHeight(NS.UInteger(img.height))
+
+	// Create a texture from descriptor
+	texture = device->newTextureWithDescriptor(texture_descriptor)
+	assert(texture != nil, "Failed to create texture")
+
+	// Copy the image data into the texture
+	region := MTL.Region{{0, 0, 0}, {NS.Integer(img.width), NS.Integer(img.height), 1}}
+	texture->replaceRegion(region, 0, final_pixels, NS.UInteger(img.width * 4))
+	return
 }
