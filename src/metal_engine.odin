@@ -33,15 +33,19 @@ createTriangle :: proc(device: ^MTL.Device) -> ^MTL.Buffer {
 
 createSquare :: proc(device: ^MTL.Device) -> ^MTL.Buffer {
 	NUM_VERTICES :: 6
-	// square has 6 points in 3 dimensions
+	// square is composed of 2 triangle primatives so 6 points in total
+	// According Metal Shader Spec. (0.0,0.0) refers to the first byte of image data and (1.0,1.0) 
+	// refers to the last byte of data. 
+	// So for a PNG (0.0,0.0) is the top left corner and (1.0,1.0) is the bottom right corner.
+	// Creating and Sampling Textures: https://developer.apple.com/documentation/metal/textures/creating_and_sampling_textures
 	squareVertices := []Vertex_Data {
 		// vertices & texcoords
-		{{-0.5, -0.5, 0.5, 1.0}, {0.0, 0.0}},
-		{{-0.5, 0.5, 0.5, 1.0}, {0.0, 1.0}},
-		{{0.5, 0.5, 0.5, 1.0}, {1.0, 1.0}},
-		{{-0.5, -0.5, 0.5, 1.0}, {0.0, 0.0}},
-		{{0.5, 0.5, 0.5, 1.0}, {1.0, 1.0}},
-		{{0.5, -0.5, 0.5, 1.0}, {1.0, 0.0}},
+		{{-0.5, -0.5, 0.0, 1.0}, {0.0, 1.0}},
+		{{-0.5, 0.5, 0.0, 1.0}, {0.0, 0.0}},
+		{{0.5, 0.5, 0.0, 1.0}, {1.0, 0.0}},
+		{{-0.5, -0.5, 0.0, 1.0}, {0.0, 1.0}},
+		{{0.5, 0.5, 0.0, 1.0}, {1.0, 0.0}},
+		{{0.5, -0.5, 0.0, 1.0}, {1.0, 1.0}},
 	}
 
 	return device->newBufferWithSlice(squareVertices[:], {}) //empty options uses default of shared
@@ -49,7 +53,7 @@ createSquare :: proc(device: ^MTL.Device) -> ^MTL.Buffer {
 
 // NOT USED
 // XCode creates default library but we're not using XCode
-// This could be useful if we figureout how to compile shaders to a .metallib
+// Eventually we'll want to compile all our shaders into a single default library.
 createDefaultLibrary :: proc(device: ^MTL.Device) -> ^MTL.Library {
 	metalDefaultLibrary := device->newDefaultLibrary()
 	assert(metalDefaultLibrary != nil, "Failed to create default library")
@@ -150,7 +154,6 @@ Texture :: struct {
 createTexture :: proc(device: ^MTL.Device) -> (texture: ^MTL.Texture) {
 
 	// Load texture from file using PNG
-
 	img: ^PNG.Image
 	err: PNG.Error
 	img, err = PNG.load_from_file("assets/mc_grass.png", {.alpha_add_if_missing})
@@ -160,10 +163,10 @@ createTexture :: proc(device: ^MTL.Device) -> (texture: ^MTL.Texture) {
 
 	// switch pixel colors
 	pixels := (bytes.buffer_to_bytes(&img.pixels))
-	pixel_buf := make([][4]u8, img.width * img.height)
+	bgra_pixels := make([][4]u8, img.width * img.height)
 	for i in 0 ..< (img.width * img.height) {
 		// RGBA -> BGRA
-		pixel_buf[i] = [4]u8 {
+		bgra_pixels[i] = [4]u8 {
 			pixels[i * 4 + 2],
 			pixels[i * 4 + 1],
 			pixels[i * 4 + 0],
@@ -171,15 +174,7 @@ createTexture :: proc(device: ^MTL.Device) -> (texture: ^MTL.Texture) {
 		}
 	}
 
-	// flip vertically
-	flipped_pixels := make([][4]u8, img.width * img.height)
-	for y in 0 ..< img.height {
-		for x in 0 ..< img.width {
-			flipped_pixels[y * img.width + x] = pixel_buf[(img.height - y - 1) * img.width + x]
-		}
-	}
-
-	final_pixels := raw_data(flipped_pixels)
+	final_pixels := bgra_pixels
 
 	texture_descriptor: ^MTL.TextureDescriptor = MTL.TextureDescriptor_alloc()->init() // Create a texture descriptor
 	defer texture_descriptor->release()
@@ -193,6 +188,16 @@ createTexture :: proc(device: ^MTL.Device) -> (texture: ^MTL.Texture) {
 
 	// Copy the image data into the texture
 	region := MTL.Region{{0, 0, 0}, {NS.Integer(img.width), NS.Integer(img.height), 1}}
-	texture->replaceRegion(region, 0, final_pixels, NS.UInteger(img.width * 4))
+	texture->replaceRegion(region, 0, raw_data(final_pixels), NS.UInteger(img.width * 4))
 	return
+}
+
+flipPixels :: proc(pixels: []u8, width, height: int) -> []u8 {
+	flipped_pixels := make([]u8, width * height * 4)
+	for y in 0 ..< height {
+		for x in 0 ..< width {
+			flipped_pixels[y * width + x] = pixels[(height - y - 1) * width + x]
+		}
+	}
+	return flipped_pixels
 }
