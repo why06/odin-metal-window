@@ -1,7 +1,5 @@
 # odin-metal-window
 
-test
-
 An app that renders using the **Apple Metal API** into the window.
 
 ## Building the App with `build.sh`
